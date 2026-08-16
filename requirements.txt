@@ -4,4 +4,4 @@ matplotlib
 openpyxl
 msal
 requests
-
+pypdf
