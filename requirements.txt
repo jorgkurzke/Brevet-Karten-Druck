@@ -1,7 +1,2 @@
 streamlit
-pandas
-matplotlib
-openpyxl
-msal
-requests
 pypdf
