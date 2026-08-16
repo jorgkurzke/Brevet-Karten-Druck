@@ -1,47 +1,43 @@
-#!/usr/bin/env python3
 """
-PDF-Verschränker
-================
+PDF-Verschränker – Streamlit-Version
+=====================================
 
-Fügt zwei PDF-Dateien seitenweise ineinander:
+Fügt zwei hochgeladene PDF-Dateien seitenweise ineinander:
 Seite 1 von PDF 1, Seite 1 von PDF 2, Seite 2 von PDF 1, Seite 2 von PDF 2, usw.
 
 Haben die beiden PDFs unterschiedlich viele Seiten, werden die restlichen
 Seiten der längeren Datei am Ende angehängt.
 
-Voraussetzungen (einmalig installieren):
-    pip install pypdf
+Voraussetzungen (in requirements.txt):
+    streamlit
+    pypdf
 
-Start:
-    python pdf_interleave_merger.py
+Lokal starten:
+    streamlit run streamlit_pdf_interleave_app.py
+
+Für Streamlit Cloud: dieses Skript als Haupt-App-Datei verwenden und eine
+requirements.txt mit den beiden obigen Zeilen ins Repo legen.
+KEIN tkinter verwenden – das funktioniert auf einem Server ohne Bildschirm nicht.
 """
 
-import tkinter as tk
-from tkinter import filedialog, messagebox
-import os
+from io import BytesIO
 
-try:
-    from pypdf import PdfReader, PdfWriter
-except ImportError:
-    raise SystemExit(
-        "Das Modul 'pypdf' wird benötigt.\n"
-        "Bitte installieren mit:  pip install pypdf"
-    )
+import streamlit as st
+from pypdf import PdfReader, PdfWriter
 
 
-def merge_interleaved(pdf_path_1: str, pdf_path_2: str, output_path: str) -> int:
+def merge_interleaved(pdf_bytes_1: bytes, pdf_bytes_2: bytes) -> tuple[bytes, int]:
     """
-    Fügt pdf_path_1 und pdf_path_2 seitenweise abwechselnd zusammen
-    (erst Seite aus Datei 1, dann die zugehörige Seite aus Datei 2)
-    und speichert das Ergebnis unter output_path.
+    Fügt zwei PDFs (als Bytes) seitenweise abwechselnd zusammen
+    (erst Seite aus Datei 1, dann die zugehörige Seite aus Datei 2).
 
     Sind die Dateien unterschiedlich lang, werden die überzähligen
     Seiten der längeren Datei am Ende angehängt.
 
-    Gibt die Gesamtzahl der Seiten der neuen Datei zurück.
+    Gibt (Ergebnis-PDF als Bytes, Gesamtseitenzahl) zurück.
     """
-    reader_1 = PdfReader(pdf_path_1)
-    reader_2 = PdfReader(pdf_path_2)
+    reader_1 = PdfReader(BytesIO(pdf_bytes_1))
+    reader_2 = PdfReader(BytesIO(pdf_bytes_2))
 
     pages_1 = reader_1.pages
     pages_2 = reader_2.pages
@@ -55,111 +51,40 @@ def merge_interleaved(pdf_path_1: str, pdf_path_2: str, output_path: str) -> int
         if i < len(pages_2):
             writer.add_page(pages_2[i])
 
-    with open(output_path, "wb") as f:
-        writer.write(f)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue(), len(writer.pages)
 
-    return len(writer.pages)
 
+st.set_page_config(page_title="PDF-Verschränker", page_icon="📄")
 
-class PdfMergerApp:
-    def __init__(self, root: tk.Tk):
-        self.root = root
-        self.root.title("PDF-Verschränker")
-        self.root.resizable(False, False)
+st.title("📄 PDF-Verschränker")
+st.write(
+    "Fügt nach jeder Seite von PDF 1 die passende Seite von PDF 2 ein "
+    "(Seite 1, Seite 1, Seite 2, Seite 2, …)."
+)
 
-        self.path_1 = tk.StringVar()
-        self.path_2 = tk.StringVar()
+col1, col2 = st.columns(2)
+with col1:
+    file_1 = st.file_uploader("PDF-Datei 1", type="pdf", key="pdf1")
+with col2:
+    file_2 = st.file_uploader("PDF-Datei 2", type="pdf", key="pdf2")
 
-        padding = {"padx": 10, "pady": 6}
-
-        tk.Label(
-            root,
-            text="Fügt nach jeder Seite von PDF 1 die passende Seite von PDF 2 ein.",
-            wraplength=420,
-            justify="left",
-        ).grid(row=0, column=0, columnspan=3, sticky="w", **padding)
-
-        # PDF 1
-        tk.Label(root, text="PDF-Datei 1:").grid(row=1, column=0, sticky="e", **padding)
-        tk.Entry(root, textvariable=self.path_1, width=45, state="readonly").grid(
-            row=1, column=1, **padding
-        )
-        tk.Button(root, text="Durchsuchen…", command=self.choose_file_1).grid(
-            row=1, column=2, **padding
-        )
-
-        # PDF 2
-        tk.Label(root, text="PDF-Datei 2:").grid(row=2, column=0, sticky="e", **padding)
-        tk.Entry(root, textvariable=self.path_2, width=45, state="readonly").grid(
-            row=2, column=1, **padding
-        )
-        tk.Button(root, text="Durchsuchen…", command=self.choose_file_2).grid(
-            row=2, column=2, **padding
-        )
-
-        # Aktion
-        tk.Button(
-            root,
-            text="Zusammenfügen und speichern…",
-            command=self.run_merge,
-            bg="#2e7d32",
-            fg="white",
-        ).grid(row=3, column=0, columnspan=3, pady=(14, 12))
-
-    def choose_file_1(self):
-        path = filedialog.askopenfilename(
-            title="PDF-Datei 1 auswählen", filetypes=[("PDF-Dateien", "*.pdf")]
-        )
-        if path:
-            self.path_1.set(path)
-
-    def choose_file_2(self):
-        path = filedialog.askopenfilename(
-            title="PDF-Datei 2 auswählen", filetypes=[("PDF-Dateien", "*.pdf")]
-        )
-        if path:
-            self.path_2.set(path)
-
-    def run_merge(self):
-        p1 = self.path_1.get()
-        p2 = self.path_2.get()
-
-        if not p1 or not p2:
-            messagebox.showwarning(
-                "Fehlende Auswahl", "Bitte zuerst beide PDF-Dateien auswählen."
-            )
-            return
-
-        if not os.path.isfile(p1) or not os.path.isfile(p2):
-            messagebox.showerror("Fehler", "Eine der ausgewählten Dateien wurde nicht gefunden.")
-            return
-
-        output_path = filedialog.asksaveasfilename(
-            title="Neue PDF-Datei speichern unter…",
-            defaultextension=".pdf",
-            filetypes=[("PDF-Dateien", "*.pdf")],
-            initialfile="zusammengefuehrt.pdf",
-        )
-        if not output_path:
-            return  # Abbruch durch Nutzer
-
+if file_1 and file_2:
+    if st.button("Zusammenfügen", type="primary"):
         try:
-            total_pages = merge_interleaved(p1, p2, output_path)
-        except Exception as exc:  # noqa: BLE001 - dem Nutzer die genaue Ursache zeigen
-            messagebox.showerror("Fehler beim Zusammenfügen", str(exc))
-            return
-
-        messagebox.showinfo(
-            "Fertig",
-            f"Die neue PDF-Datei mit {total_pages} Seiten wurde gespeichert unter:\n{output_path}",
-        )
-
-
-def main():
-    root = tk.Tk()
-    PdfMergerApp(root)
-    root.mainloop()
-
-
-if __name__ == "__main__":
-    main()
+            result_bytes, total_pages = merge_interleaved(
+                file_1.getvalue(), file_2.getvalue()
+            )
+        except Exception as exc:  # noqa: BLE001 - Fehlerursache dem Nutzer zeigen
+            st.error(f"Fehler beim Zusammenfügen: {exc}")
+        else:
+            st.success(f"Fertig – die neue PDF-Datei hat {total_pages} Seiten.")
+            st.download_button(
+                label="Ergebnis-PDF herunterladen",
+                data=result_bytes,
+                file_name="zusammengefuehrt.pdf",
+                mime="application/pdf",
+            )
+else:
+    st.info("Bitte beide PDF-Dateien oben auswählen.")
